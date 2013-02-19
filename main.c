@@ -49,6 +49,7 @@ int main(int argc, char** argv)
    {
       received = read_uart_line(serial, receive_buffer, 256);
       send_uart_line(serial, receive_buffer, received);
+      clear_and_home(lcd);
       lcd_send_string(lcd, receive_buffer, received);
    }
 
