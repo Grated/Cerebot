@@ -19,9 +19,13 @@ extern "C" {
    void init_uart_cmd_interp(UART_MODULE uart, UINT32 system_clk_freq,
          UINT32 baud);
 
+   // Reads a single byte from the UART.
+   UINT8 read_uart_byte(UART_MODULE uart);
    // Read a line from the UART
    int read_uart_line(UART_MODULE uart, char *output, UINT32 max_size);
 
+   // Send a single byte over the UART.
+   void send_uart_byte(UART_MODULE uart, char byte);
    // Send a line over the UART
    void send_uart_line(UART_MODULE uart, char *string, UINT32 size);
 

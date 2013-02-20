@@ -32,6 +32,7 @@ int main(int argc, char** argv)
    char receive_buffer[256] = {0};
    char *buf = "Hello world.....Blargh!";
    char *buf2 = "Might be working???";
+   char *buf3 = "Stuff received!!!";
 
    UART_MODULE lcd = UART1;
    UART_MODULE serial = UART2;
@@ -48,7 +49,7 @@ int main(int argc, char** argv)
    while(1)
    {
       received = read_uart_line(serial, receive_buffer, 256);
-      send_uart_line(serial, receive_buffer, received);
+      send_uart_line(serial, buf3, strlen(buf3));
       clear_and_home(lcd);
       lcd_send_string(lcd, receive_buffer, received);
    }

@@ -15,9 +15,17 @@ void init_uart_cmd_interp(UART_MODULE uart, UINT32 system_clk_freq, UINT32 baud)
    UARTEnable(uart, UART_ENABLE_FLAGS(UART_PERIPHERAL | UART_TX | UART_RX));
 }
 
+// Reads a single character from the UART.
+UINT8 read_uart_byte(UART_MODULE uart)
+{
+   while(!UARTReceivedDataIsAvailable(uart));
+   return UARTGetDataByte(uart);
+}
+
 // Read a line from the UART, blocks until data is available.
 // Appends a null terminator.
 // TODO: Should this continue reading until a newline is found?
+// TODO: Pass in a parameter or have a setting to disable echo.
 int read_uart_line(UART_MODULE uart, char *output, UINT32 max_size)
 {
    UINT32 num_read = 0;
@@ -25,9 +33,10 @@ int read_uart_line(UART_MODULE uart, char *output, UINT32 max_size)
 
    while (num_read < max_size-1)
    {
-      while (!UARTReceivedDataIsAvailable(uart));
+      byte = read_uart_byte(uart);
 
-      byte = UARTGetDataByte(uart);
+      // Echo the received byte
+      send_uart_byte(uart, byte);
 
       // End of the line
       if (byte == '\r' || byte == '\n')
@@ -46,14 +55,20 @@ int read_uart_line(UART_MODULE uart, char *output, UINT32 max_size)
    return num_read;
 }
 
+// Sends a single byte over the UART.
+void send_uart_byte(UART_MODULE uart, UINT8 byte)
+{
+   while(!UARTTransmitterIsReady(uart));
+   UARTSendDataByte(uart, byte);
+}
+
 // Send a line over the UART
 void send_uart_line(UART_MODULE uart, char *string, UINT32 size)
 {
    // Send the message.
    while (size != 0)
    {
-      while(!UARTTransmitterIsReady(uart));
-      UARTSendDataByte(uart, *string);
+      send_uart_byte(uart, *string);
       string++;
       size--;
    }
