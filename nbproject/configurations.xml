@@ -6,6 +6,10 @@
                    projectFiles="true">
       <itemPath>pmod_cls/pmod_cls_interface.h</itemPath>
       <itemPath>command_interpreter/command_interpreter.h</itemPath>
+      <itemPath>pmod-hbridge/pmod-hbridge.h</itemPath>
+      <itemPath>hbridge.h</itemPath>
+      <itemPath>config.h</itemPath>
+      <itemPath>battery_monitor.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -17,6 +21,9 @@
       <itemPath>main.c</itemPath>
       <itemPath>pmod_cls/pmod_cls_interface.c</itemPath>
       <itemPath>command_interpreter/command_interpreter.c</itemPath>
+      <itemPath>pmod-hbridge/pmod-hbridge.c</itemPath>
+      <itemPath>hbridge.c</itemPath>
+      <itemPath>battery_monitor.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"

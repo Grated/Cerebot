@@ -23,6 +23,12 @@ extern "C" {
       DISP_ON_BL_ON = '3'
    };
 
+   enum pmod_cls_line
+   {
+      PMOD_CLS_LINE_1,
+      PMOD_CLS_LINE_2,
+   };
+
    #define ESC_CHAR (0x1B)
    #define LEFT_BRACK ('[')
 
@@ -40,6 +46,9 @@ extern "C" {
 
    // enable display
    void set_display(UART_MODULE lcd, enum display_mode mode);
+
+   // Sets the cursor to the start of the specified line
+   void set_cursor_to_line_start(UART_MODULE lcd, enum pmod_cls_line line);
 
    // There's more we can do but I probably won't use them.
    // See the PMOD CLS reference manual.

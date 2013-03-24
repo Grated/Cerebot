@@ -25,7 +25,7 @@ extern "C" {
    int read_uart_line(UART_MODULE uart, char *output, UINT32 max_size);
 
    // Send a single byte over the UART.
-   void send_uart_byte(UART_MODULE uart, char byte);
+   void send_uart_byte(UART_MODULE uart, UINT8 byte);
    // Send a line over the UART
    void send_uart_line(UART_MODULE uart, char *string, UINT32 size);
 

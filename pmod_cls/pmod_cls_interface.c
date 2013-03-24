@@ -52,3 +52,13 @@ void set_display(UART_MODULE lcd, enum display_mode mode)
    char buf[4] = {ESC_CHAR, LEFT_BRACK, mode, 'e'};
    lcd_send_string(lcd, buf, 4);
 }
+
+void set_cursor_to_line_start(UART_MODULE lcd, enum pmod_cls_line line)
+{
+   char buf[6] = {ESC_CHAR, LEFT_BRACK, '0', ';', '0', 'H'};
+   if (line == PMOD_CLS_LINE_2)
+   {
+      buf[2] = '1';
+   }
+   lcd_send_string(lcd, buf, 6);
+}
