@@ -1,20 +1,20 @@
 
 #include <stdint.h>
 #include "pmod-hbridge.h"
-#include "peripheral/ports.h" // For macros used to read ports
-#include "peripheral/outcompare.h" // macros to read output compare registers
 
 /*
  * Updates sensor information for the given hbridge sensor.  After
  * sample_period updates this will provide a new epsp value.
  */
-void update_sensor_info(struct hbridge_sensor_info *sensor,
-                        uint32_t sample_period)
+void update_sensor_state(struct hbridge_state *hbridge,
+                         enum hbridge_sensors sensor_id,
+                         uint32_t sample_period)
 {
    uint16_t new_edge;
+   struct hbridge_sensor_state *sensor = &(hbridge->sensor[sensor_id]);
 
    // Read the current state of the sensor
-   new_edge = PORTReadBits(sensor->port, sensor->bit_pos);
+   new_edge = hbridge->read_sensor_state(hbridge->hbridge_id, sensor_id);
 
    // Determine if we've found a new rising edge
    if(new_edge > 0 && new_edge != sensor->prev_edge)
@@ -43,7 +43,7 @@ void update_sensor_info(struct hbridge_sensor_info *sensor,
 /*
  * Returns 1 if the motor is stopped, 0 otherwise
  */
-uint8_t is_hbridge_stopped(struct hbridge_info *hbridge)
+uint8_t is_hbridge_stopped(struct hbridge_state *hbridge)
 {
    uint8_t stopped = 0;
 
@@ -52,8 +52,8 @@ uint8_t is_hbridge_stopped(struct hbridge_info *hbridge)
    // Is the hbridge sensor information reporting that the motor is stopped?
    // If both are true, then the motor is stopped.
    if ((get_hbridge_speed(hbridge) == 0) &&
-       (hbridge->sensor_a.epsp == 0) && 
-       (hbridge->sensor_b.epsp == 0))
+       (hbridge->sensor[PMOD_HB_SENSOR_A].epsp == 0) &&
+       (hbridge->sensor[PMOD_HB_SENSOR_B].epsp == 0))
    {
       stopped = 1;
    }
@@ -62,16 +62,17 @@ uint8_t is_hbridge_stopped(struct hbridge_info *hbridge)
 }
 
 // Sets the hbridge direction
-void set_hbridge_direction(struct hbridge_info *hbridge,
+void set_hbridge_direction(struct hbridge_state *hbridge,
                            enum motor_direction dir)
 {
    if (dir == PMOD_HB_CW)
    {
+      hbridge->clear_direction(hbridge->hbridge_id);
       PORTClearBits(hbridge->dir_port, hbridge->dir_bit);
    }
    else
    {
-      PORTSetBits(hbridge->dir_port, hbridge->dir_bit);
+      hbridge->set_direction(hbridge->hbridge_id);
    }
    hbridge->direction = dir;
 }
@@ -81,7 +82,7 @@ void set_hbridge_direction(struct hbridge_info *hbridge,
  * is stopped. Returns 1 if the change is successful otherwise it returns
  * 0 if the motor is not stopped.
  */
-uint8_t change_hbridge_direction(struct hbridge_info *hbridge)
+uint8_t change_hbridge_direction(struct hbridge_state *hbridge)
 {
    uint8_t changed = 0;
 
@@ -107,57 +108,15 @@ uint8_t change_hbridge_direction(struct hbridge_info *hbridge)
 /*
  * Sets the value of OCnRS for the specified hbridge.
  */
-void set_hbridge_speed(struct hbridge_info *hbridge, uint32_t speed)
+void set_hbridge_speed(struct hbridge_state *hbridge, uint32_t speed)
 {
-   switch(hbridge->ocn)
-   {
-      case 1:
-         SetDCOC1PWM(speed);
-         break;
-      case 2:
-         SetDCOC2PWM(speed);
-         break;
-      case 3:
-         SetDCOC3PWM(speed);
-         break;
-      case 4:
-         SetDCOC4PWM(speed);
-         break;
-      case 5:
-         SetDCOC5PWM(speed);
-         break;
-      default:
-         break;
-   }
+   hbridge->set_speed(hbridge->hbridge_id, speed);
 }
 
 /*
  * Reads the current value of OCnR for the specified hbridge.
  */
-uint32_t get_hbridge_speed(struct hbridge_info *hbridge)
+uint32_t get_hbridge_speed(struct hbridge_state *hbridge)
 {
-   uint32_t ocnr = 0;
-
-   switch(hbridge->ocn)
-   {
-      case 1:
-         ocnr = ReadRegOC1(0);
-         break;
-      case 2:
-         ocnr = ReadRegOC2(0);
-         break;
-      case 3:
-         ocnr = ReadRegOC3(0);
-         break;
-      case 4:
-         ocnr = ReadRegOC4(0);
-         break;
-      case 5:
-         ocnr = ReadRegOC5(0);
-         break;
-      default:
-         ocnr = 0;
-         break;
-   }
-   return ocnr;
+   return hbridge->get_speed(hbridge->hbridge_id);
 }
