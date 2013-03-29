@@ -8,18 +8,23 @@
 #include "hbridge.h"
 #include "pmod-hbridge/pmod-hbridge.h"
 
-struct hbridge_setup
+struct hbridge_info
 {
    struct hbridge_state state;
+   volatile uint32_t target_speed;
    uint16_t sensor_port[PMOD_HB_NUM_SENSORS]; // Port mask for each sensor
    uint16_t sensor_bit_pos[PMOD_HB_NUM_SENSORS]; // Bit mask for each sensor
    uint16_t dir_port; // Port mask for the direction pin
    uint16_t dir_bit; // Bit position for the direction pin
    uint16_t ocn; // Output compare index (1 for OC1, 2 for OC2...)
+   uint16_t tmrn; // Timer index (1 for timer 1, 2 for timer 2...)
 };
 
+// The direction the robot is moving
+volatile enum robot_direction direction = ROBOT_FORWARD;
+
 // Declare storage for hbridge info
-static struct hbridge_setup Motors[NUM_MOTORS];
+static struct hbridge_info Motors[NUM_MOTORS];
 
 // Forward declarations of driver functions
 static uint8_t read_sensor_state(uint8_t hbridge_id,
@@ -35,8 +40,8 @@ static uint32_t get_speed(uint8_t hbridge_id);
  */
 static void init_hbridge_data()
 {
-   memset(&Motors[LEFT_MOTOR], 0, sizeof(struct hbridge_setup));
-   memset(&Motors[RIGHT_MOTOR], 0, sizeof(struct hbridge_setup));
+   memset(&Motors[LEFT_MOTOR], 0, sizeof(struct hbridge_info));
+   memset(&Motors[RIGHT_MOTOR], 0, sizeof(struct hbridge_info));
 
    // Enable reading value of sensor A
    PORTSetPinsDigitalIn(HBRIDGE_LEFT_SA_PORT, HBRIDGE_LEFT_SA_BIT);
@@ -57,6 +62,7 @@ static void init_hbridge_data()
    Motors[LEFT_MOTOR].dir_port = HBRIDGE_LEFT_DIR_PORT;
    Motors[LEFT_MOTOR].dir_bit = HBRIDGE_LEFT_DIR_BIT;
    Motors[LEFT_MOTOR].ocn = HBRIDGE_LEFT_OC;
+   Motors[LEFT_MOTOR].tmrn = HBRIDGE_LEFT_TMR;
 
    // Setup right motor
    Motors[RIGHT_MOTOR].state.hbridge_id = RIGHT_MOTOR;
@@ -67,6 +73,7 @@ static void init_hbridge_data()
    Motors[RIGHT_MOTOR].dir_port = HBRIDGE_RIGHT_DIR_PORT;
    Motors[RIGHT_MOTOR].dir_bit = HBRIDGE_RIGHT_DIR_BIT;
    Motors[RIGHT_MOTOR].ocn = HBRIDGE_RIGHT_OC;
+   Motors[RIGHT_MOTOR].tmrn = HBRIDGE_RIGHT_TMR;
 
    // Setup function pointers
    Motors[LEFT_MOTOR].state.read_sensor_state = &read_sensor_state;
@@ -84,6 +91,11 @@ static void init_hbridge_data()
    set_hbridge_direction(&(Motors[LEFT_MOTOR].state), PMOD_HB_CCW);
    set_hbridge_direction(&(Motors[RIGHT_MOTOR].state), PMOD_HB_CW);
 
+   // Intialize speed
+   set_hbridge_speed(&(Motors[LEFT_MOTOR].state), 0);
+   set_hbridge_speed(&(Motors[LEFT_MOTOR].state), 0);
+   set_target_speed(LEFT_MOTOR, 0);
+   set_target_speed(RIGHT_MOTOR, 0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -216,6 +228,35 @@ static struct hbridge_state* get_hbridge(enum motor_list motor)
 }
 
 /*
+ * Helper function for getting timer periods.
+ * The timer period is the maximum value for a output compare register.
+ * Setting the OCRn register to the timer period results in the fastest
+ * motor speed.
+ */
+static uint32_t get_timer_period(struct hbridge_info* hbridge)
+{
+   uint32_t retval = 0;
+   switch(hbridge->tmrn)
+   {
+      case 1:
+         retval = ReadPeriod1();
+         break;
+      case 2:
+         retval = ReadPeriod2();
+         break;
+      case 3:
+         retval = ReadPeriod3();
+         break;
+      case 4:
+         retval = ReadPeriod4();
+         break;
+      case 5:
+         retval = ReadPeriod5();
+         break;
+   }
+}
+
+/*
  * Initializes the hbridges
  */
 void init_hbridges()
@@ -289,3 +330,61 @@ uint8_t change_motor_direction(enum motor_list motor)
    return changed;
 }
 
+/*
+ * Sets the motor speed given a percentage.
+ * Disable interrupts before calling.
+ */
+void set_target_speed(enum motor_list motor, uint8_t percent)
+{
+   uint32_t speed = 0;
+   if (percent >= 100)
+   {
+      percent = 99;
+   }
+
+   speed = (uint32_t)((float)percent/100 * get_timer_period(&(Motors[motor])));
+
+   Motors[motor].target_speed = speed;
+}
+
+#define SPEED_STEP 1
+/*
+ * Updates motor state. Expected to be called periodically
+ */
+void update_motor_state()
+{
+   enum motor_list motor;
+   uint32_t current_speed;
+   uint32_t target_speed;
+
+   for (motor = FIRST_MOTOR; motor < NUM_MOTORS; motor++)
+   {
+      target_speed = Motors[motor].target_speed;
+      current_speed = get_hbridge_speed(&(Motors[motor].state));
+
+      // Step the motor up to the target speed
+      if (current_speed != target_speed)
+      {
+         // If we are slowing down, do it!
+         if (current_speed > target_speed)
+         {
+            set_hbridge_speed(&(Motors[motor].state), target_speed);
+         }
+         else
+         {
+            // We are speeding up, sometimes the cerebot restarts
+            // if the speed increase is too great, slew to the
+            // target speed.
+            if ((target_speed - current_speed) > SPEED_STEP)
+            {
+               set_hbridge_speed(&(Motors[motor].state),
+                                 current_speed + SPEED_STEP);
+            }
+            else
+            {
+               set_hbridge_speed(&(Motors[motor].state), target_speed);
+            }
+         }
+      }
+   }
+}

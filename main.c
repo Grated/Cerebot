@@ -88,26 +88,32 @@ int main(int argc, char** argv)
    while(1)
    {
       received = read_uart_line(serial, receive_buffer, 256);
+
+      // Disable interrupts while we update the desired motor state
+	   INTDisableInterrupts();
+
       if (strcmp(receive_buffer, "dir") == 0)
       {
-         while(is_motor_stopped(LEFT_MOTOR) == 0)
-         {
-            SetDCOC2PWM(0);
-         }
-         change_motor_direction(LEFT_MOTOR);
-
-         while(is_motor_stopped(RIGHT_MOTOR) == 0)
-         {
-            SetDCOC3PWM(0);
-         }
-         change_motor_direction(RIGHT_MOTOR);
+//         while(is_motor_stopped(LEFT_MOTOR) == 0)
+//         {
+//            SetDCOC2PWM(0);
+//         }
+//         change_motor_direction(LEFT_MOTOR);
+//
+//         while(is_motor_stopped(RIGHT_MOTOR) == 0)
+//         {
+//            SetDCOC3PWM(0);
+//         }
+//         change_motor_direction(RIGHT_MOTOR);
       }
       else
       {
          i = strtol(receive_buffer, NULL, 10);
-         SetDCOC2PWM(i);
-         SetDCOC3PWM(i);
+         set_target_speed(LEFT_MOTOR, i);
+         set_target_speed(RIGHT_MOTOR, i);
       }
+      // Re-enable interrupts
+      INTEnableInterrupts();
    }
 
    return (EXIT_SUCCESS);
@@ -151,6 +157,7 @@ void __ISR(_TIMER_1_VECTOR, ipl2) Timer1Handler(void)
    static uint32_t i = 0;
    char send_buffer[32] = {0};
 
+   update_motor_state();
    update_hbridge_sensor_info(SAMPLE_PERIOD_200MS);
    if (i ==  4 * TIMER_INT_TOGGLES)
    {
