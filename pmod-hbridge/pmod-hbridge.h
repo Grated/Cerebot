@@ -50,7 +50,7 @@ void update_sensor_state(struct hbridge_state *hbridge,
                          enum hbridge_sensors sensor,
                          uint32_t sample_period);
 uint8_t is_hbridge_stopped(struct hbridge_state *hbridge);
-void set_hbridge_direction(struct hbridge_state *hbridge,
+uint8_t set_hbridge_direction(struct hbridge_state *hbridge,
                            enum motor_direction dir);
 uint8_t change_hbridge_direction(struct hbridge_state *hbridge);
 void set_hbridge_speed(struct hbridge_state *hbridge, uint32_t speed);

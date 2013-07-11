@@ -61,26 +61,29 @@ uint8_t is_hbridge_stopped(struct hbridge_state *hbridge)
    return stopped;
 }
 
-// Sets the hbridge direction
-void set_hbridge_direction(struct hbridge_state *hbridge,
+// Sets the hbridge direction if the motor is stopped.
+uint8_t set_hbridge_direction(struct hbridge_state *hbridge,
                            enum motor_direction dir)
 {
-   // Stop the motor
-   while (is_hbridge_stopped(hbridge) == 0)
-   {
-      set_hbridge_speed(hbridge, 0);
-   }
+   uint8_t changed = 0;
 
-   if (dir == PMOD_HB_CW)
+   // If the motor is stopped allow the direction bit to be changed.
+   if (is_hbridge_stopped(hbridge) != 0)
    {
-      hbridge->clear_direction(hbridge->hbridge_id);
-   }
-   else
-   {
-      hbridge->set_direction(hbridge->hbridge_id);
-   }
+      if (dir == PMOD_HB_CW)
+      {
+         hbridge->clear_direction(hbridge->hbridge_id);
+      }
+      else
+      {
+         hbridge->set_direction(hbridge->hbridge_id);
+      }
 
-   hbridge->direction = dir;
+      hbridge->direction = dir;
+
+      changed = 1;
+   }
+   return changed;
 }
 
 /*
@@ -94,15 +97,12 @@ uint8_t change_hbridge_direction(struct hbridge_state *hbridge)
 
    if (hbridge->direction == PMOD_HB_CW)
    {
-      set_hbridge_direction(hbridge, PMOD_HB_CCW);
+      changed = set_hbridge_direction(hbridge, PMOD_HB_CCW);
    }
    else
    {
-      set_hbridge_direction(hbridge, PMOD_HB_CW);
+      changed = set_hbridge_direction(hbridge, PMOD_HB_CW);
    }
-
-   // We changed the direction
-   changed = 1;
 
    return changed;
 }

@@ -21,8 +21,7 @@ enum motor_list
 void init_hbridges();
 void update_hbridge_sensor_info(uint32_t sample_period);
 void print_hbridge_info(enum motor_list motor, char *buf, uint32_t max_len);
-uint8_t is_motor_stopped(enum motor_list motor);
-void set_target_speed(enum motor_list motor, uint8_t speed);
+void set_target_speed(enum motor_list motor, int8_t speed);
 void update_motor_state();
 
 #endif // HBRIDGE_H

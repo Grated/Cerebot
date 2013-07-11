@@ -11,7 +11,10 @@
 struct hbridge_info
 {
    struct hbridge_state state;
+
    volatile uint32_t target_speed;
+   volatile enum motor_direction target_direction;
+
    uint16_t sensor_port[PMOD_HB_NUM_SENSORS]; // Port mask for each sensor
    uint16_t sensor_bit_pos[PMOD_HB_NUM_SENSORS]; // Bit mask for each sensor
    uint16_t dir_port; // Port mask for the direction pin
@@ -19,9 +22,6 @@ struct hbridge_info
    uint16_t ocn; // Output compare index (1 for OC1, 2 for OC2...)
    uint16_t tmrn; // Timer index (1 for timer 1, 2 for timer 2...)
 };
-
-// The direction the robot is moving
-volatile enum robot_direction direction = ROBOT_FORWARD;
 
 // Declare storage for hbridge info
 static struct hbridge_info Motors[NUM_MOTORS];
@@ -34,6 +34,16 @@ static void set_direction(uint8_t hbridge_id);
 static void clear_direction(uint8_t hbridge_id);
 static void set_speed(uint8_t hbridge_id, uint32_t speed);
 static uint32_t get_speed(uint8_t hbridge_id);
+
+// Static functions
+static uint8_t is_motor_stopped(enum motor_list motor);
+static uint8_t change_motor_direction(enum motor_list motor);
+static struct hbridge_state* get_hbridge(enum motor_list motor);
+static uint32_t get_timer_period(struct hbridge_info* hbridge);
+static enum robot_direction get_motor_direction(enum motor_list motor,
+        enum motor_direction motor_dir);
+static void set_target_motor_direction(enum motor_list motor,
+        enum robot_direction direction);
 
 /*
  * Intializes hbridges for the motors
@@ -209,10 +219,10 @@ static uint32_t get_speed(uint8_t hbridge_id)
    return ocnr;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-/// Functions for external interfacing with hbridges
-///////////////////////////////////////////////////////////////////////////////
 
+///////////////////////////////////////////////////////////////////////////////
+/// Local helper functions
+///////////////////////////////////////////////////////////////////////////////
 /*
  * Helper function to get the proper hbridge structure from the motor
  * list enum.
@@ -255,6 +265,119 @@ static uint32_t get_timer_period(struct hbridge_info* hbridge)
          break;
    }
 }
+
+/*
+ * Returns non-zero if the specified motor is stopped, returns 0 if it isn't.
+ */
+static uint8_t is_motor_stopped(enum motor_list motor)
+{
+   uint8_t stopped = 1; // Assume it isn't
+   struct hbridge_state* hbridge = get_hbridge(motor);
+   if (hbridge != NULL)
+   {
+      stopped = is_hbridge_stopped(hbridge);
+   }
+   return stopped;
+}
+
+/*
+ * Changes the motor direction.  Busy waits until the direction can
+ * be changed.
+ */
+static uint8_t change_motor_direction(enum motor_list motor)
+{
+   uint8_t changed = 0;
+   struct hbridge_state *hbridge = get_hbridge(motor);
+   if (hbridge != NULL)
+   {
+      changed = change_hbridge_direction(hbridge);
+   }
+   return changed;
+}
+
+/**
+ * Given a motor and that motors direction determines the direction that
+ * motor helps move the robot.
+ * @param motor LEFT_MOTOR or RIGHT_MOTOR
+ * @param motor_dir PMOD_HB_CCW or PMOD_HB_CW
+ * @return ROBOT_FORWARD or ROBOT_REVERSE
+ */
+static enum robot_direction get_motor_direction(
+   enum motor_list motor, enum motor_direction motor_dir)
+{
+   enum robot_direction dir = ROBOT_FORWARD;
+
+   switch (motor)
+   {
+      case LEFT_MOTOR:
+         if (motor_dir == PMOD_HB_CCW)
+         {
+            dir = ROBOT_FORWARD;
+         }
+         else
+         {
+            dir = ROBOT_REVERSE;
+         }
+         break;
+
+      case RIGHT_MOTOR:
+         if (motor_dir == PMOD_HB_CW)
+         {
+            dir = ROBOT_FORWARD;
+         }
+         else
+         {
+            dir = ROBOT_REVERSE;
+         }
+         break;
+
+      default:
+         break;
+   }
+   return dir;
+}
+
+/**
+ * Given a direction from the robots point of view updates the motor to
+ * move in that direction.
+ * @param motor
+ * @param direction
+ */
+static void set_target_motor_direction(enum motor_list motor,
+        enum robot_direction direction)
+{
+   switch (motor)
+   {
+      case LEFT_MOTOR:
+         if (direction == ROBOT_FORWARD)
+         {
+            Motors[motor].target_direction = PMOD_HB_CCW;
+         }
+         else
+         {
+            Motors[motor].target_direction = PMOD_HB_CW;
+         }
+         break;
+
+      case RIGHT_MOTOR:
+         if (direction == ROBOT_FORWARD)
+         {
+            Motors[motor].target_direction = PMOD_HB_CW;
+         }
+         else
+         {
+            Motors[motor].target_direction = PMOD_HB_CCW;
+         }
+         break;
+
+      default:
+         break;
+   }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Functions for external interfacing with hbridges
+///////////////////////////////////////////////////////////////////////////////
 
 /*
  * Initializes the hbridges
@@ -303,44 +426,36 @@ void print_hbridge_info(enum motor_list motor, char *buf, uint32_t max_len)
 }
 
 /*
- * Returns non-zero if the specified motor is stopped, returns 0 if it isn't.
- */
-uint8_t is_motor_stopped(enum motor_list motor)
-{
-   uint8_t stopped = 1; // Assume it isn't
-   struct hbridge_state* hbridge = get_hbridge(motor);
-   if (hbridge != NULL)
-   {
-      stopped = is_hbridge_stopped(hbridge);
-   }
-   return stopped;
-}
-
-/*
- * Changes the motor direction.
- */
-uint8_t change_motor_direction(enum motor_list motor)
-{
-   uint8_t changed = 0;
-   struct hbridge_state *hbridge = get_hbridge(motor);
-   if (hbridge != NULL)
-   {
-      changed = change_hbridge_direction(hbridge);
-   }
-   return changed;
-}
-
-/*
  * Sets the motor speed given a percentage.
  * Disable interrupts before calling.
  */
-void set_target_speed(enum motor_list motor, uint8_t percent)
+void set_target_speed(enum motor_list motor, int8_t percent)
 {
    uint32_t speed = 0;
+
+   // Clamp the percentage of power
    if (percent >= 100)
    {
       percent = 99;
    }
+
+   if (percent <= -100)
+   {
+      percent = -99;
+   }
+
+   // If the percentage is positive we want to go forward, otherwise
+   // we want to go in reverse.
+   if (percent >= 0)
+   {
+      set_target_motor_direction(motor, ROBOT_FORWARD);
+   }
+   else
+   {
+      set_target_motor_direction(motor, ROBOT_REVERSE);
+   }
+
+   percent = abs(percent);
 
    speed = (uint32_t)((float)percent/100 * get_timer_period(&(Motors[motor])));
 
@@ -362,8 +477,20 @@ void update_motor_state()
       target_speed = Motors[motor].target_speed;
       current_speed = get_hbridge_speed(&(Motors[motor].state));
 
+      // See if we need to change directions
+      if (Motors[motor].state.direction != Motors[motor].target_direction)
+      {
+         // Yup, the target direction is different from the current.
+         // Try to stop the motor.
+         set_hbridge_speed(&(Motors[motor].state), 0);
+
+         // Try a direction change, will return if the motors aren't stopped.
+         // That's OK if it does, we'll try again on the next go around.
+         set_hbridge_direction(&(Motors[motor].state),
+            Motors[motor].target_direction);
+      }
       // Step the motor up to the target speed
-      if (current_speed != target_speed)
+      else if (current_speed != target_speed)
       {
          // If we are slowing down, do it!
          if (current_speed > target_speed)
@@ -375,6 +502,7 @@ void update_motor_state()
             // We are speeding up, sometimes the cerebot restarts
             // if the speed increase is too great, slew to the
             // target speed.
+            // Probably because of the sudden need for power.
             if ((target_speed - current_speed) > SPEED_STEP)
             {
                set_hbridge_speed(&(Motors[motor].state),

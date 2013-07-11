@@ -11,10 +11,11 @@
 #include "config.h"
 #include "hbridge.h"
 #include "battery_monitor.h"
+#include "lcd.h"
+#include "robot_messaging.h"
 
 #include <peripheral/timer.h>
 #include <peripheral/outcompare.h>
-#include "pmod_cls/pmod_cls_interface.h"
 
 #ifndef OVERRIDE_CONFIG_BITS
 
@@ -45,8 +46,9 @@
 #define SAMPLE_PERIOD_200MS (TIMER_INT_TOGGLES / 5)
 
 // UART 1 is connected to the LCD screen.
-UART_MODULE lcd = UART1;
-// UART 2 is the serial or bluetooth connection to a computer.
+#define LCD_UART UART1
+
+// UART 2 is the serial or bluetooth connection
 UART_MODULE serial = UART2;
 
 void configureTimers();
@@ -58,18 +60,11 @@ static const char* Powerup_msg = "Robot startup";
  */
 int main(int argc, char** argv)
 {
-   UINT32 i = TIMER_TICK_1MS;
-   UINT32 received = 0;
-   char receive_buffer[256] = {0};
-
    // Initialize the LCD baud rate, backlight, wrapping
-   init_pmod_cls(lcd, GetPeripheralClock(), 9600);
-   set_display(lcd, DISP_ON_BL_ON);
-   wrap_at_16(lcd);
-   clear_and_home(lcd);
+   init_lcd(LCD_UART, GetPeripheralClock());
 
    // Initialize the UART connection
-   init_uart_cmd_interp(serial, GetPeripheralClock(), 9600);
+   init_uart_cmd_interp(serial, GetPeripheralClock(), 115200);
 
    send_uart_line(serial, Powerup_msg, strlen(Powerup_msg));
 
@@ -87,33 +82,7 @@ int main(int argc, char** argv)
 
    while(1)
    {
-      received = read_uart_line(serial, receive_buffer, 256);
-
-      // Disable interrupts while we update the desired motor state
-	   INTDisableInterrupts();
-
-      if (strcmp(receive_buffer, "dir") == 0)
-      {
-//         while(is_motor_stopped(LEFT_MOTOR) == 0)
-//         {
-//            SetDCOC2PWM(0);
-//         }
-//         change_motor_direction(LEFT_MOTOR);
-//
-//         while(is_motor_stopped(RIGHT_MOTOR) == 0)
-//         {
-//            SetDCOC3PWM(0);
-//         }
-//         change_motor_direction(RIGHT_MOTOR);
-      }
-      else
-      {
-         i = strtol(receive_buffer, NULL, 10);
-         set_target_speed(LEFT_MOTOR, i);
-         set_target_speed(RIGHT_MOTOR, i);
-      }
-      // Re-enable interrupts
-      INTEnableInterrupts();
+      read_robot_message();
    }
 
    return (EXIT_SUCCESS);
@@ -154,38 +123,10 @@ void configureTimers()
  */
 void __ISR(_TIMER_1_VECTOR, ipl2) Timer1Handler(void)
 {
-   static uint32_t i = 0;
-   char send_buffer[32] = {0};
-
    update_motor_state();
    update_hbridge_sensor_info(SAMPLE_PERIOD_200MS);
-   if (i ==  4 * TIMER_INT_TOGGLES)
-   {
-      clear_and_home(lcd);
-
-      // Left motor info
-      print_hbridge_info(LEFT_MOTOR, send_buffer, 32);
-      lcd_send_string(lcd, "L ", 2);
-      lcd_send_string(lcd, send_buffer, strlen(send_buffer));
-
-      // Right motor info
-      set_cursor_to_line_start(lcd, PMOD_CLS_LINE_2);
-      print_hbridge_info(RIGHT_MOTOR, send_buffer, 32);
-      lcd_send_string(lcd, "R ", 2);
-      lcd_send_string(lcd, send_buffer, strlen(send_buffer));
-
-      i = 0;
-   }
-   else if (i == 2 * TIMER_INT_TOGGLES)
-   {
-      clear_and_home(lcd);
-      sprintf(send_buffer, "Batt: %1.2f V", read_battery_voltage());
-      lcd_send_string(lcd, send_buffer, strlen(send_buffer));
-   }
-
-   i++;
+   rotating_display(TIMER_INT_TOGGLES);
 
    // clear the interrupt flag
    mT1ClearIntFlag();
-
 }
